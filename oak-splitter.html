@@ -1,0 +1,93 @@
+<link rel="import" href="../polymer/polymer-element.html">
+<link rel="import" href="../polymer/lib/mixins/gesture-event-listeners.html">
+
+<dom-module id="oak-splitter">
+  <template>
+    <style>
+      :host {
+        display: block;
+      }
+
+      :host([direction="top"]),
+      :host([direction="bottom"]) {
+        cursor: ns-resize;
+      }
+
+      :host([direction="left"]),
+      :host([direction="right"]) {
+        cursor: ew-resize;
+      }
+    </style>
+  </template>
+
+  <script>
+    class OakSplitter extends Polymer.Element {
+      static get is() { return "oak-splitter"; }
+
+      static get properties() {
+        return {
+          direction: { type: String, value: "top", observer: "_directionChanged" },
+          minSize: { type: Number, value: 10 }
+        }
+      }
+
+      ready() {
+        super.ready();
+        Polymer.Gestures.addListener(this, "track", e => this.track(e));
+        Polymer.Gestures.addListener(this, "down", e => this.preventSelection(e));
+      }
+
+      track(ev) {
+        switch (ev.detail.state) {
+          case "start":
+            this._target = this.direction === "right" || this.direction === "bottom"
+              ? this.nextElementSibling
+              : this.previousElementSibling;
+
+
+            // Compute left size instead of real size to avoid overflow invisible move
+            const p = this._target.parentElement;
+            this._size = this._getDirectionalSize(p) - [...p.children]
+              .filter(c => c !== this._target)
+              .reduce((p, c) => p + this._getDirectionalSize(c), 0);
+            break;
+          case "track":
+            const delta = ev.detail[this._delta];
+            let size = this._size + delta * this._factor;
+            if (size < this.minSize) {
+              size = this.minSize;
+              delta = this._getDirectionalSize(this._target) - this.minSize;
+            }
+            this._target.style[this._dimension] = `${size}px`;
+
+            this.dispatchEvent(new CustomEvent("resized", { [this._delta]: delta }));
+            break;
+        }
+        ev.preventDefault();
+      }
+
+      _getDirectionalSize(target) {
+        return parseInt(getComputedStyle(target)[this._dimension]);
+      }
+
+      _directionChanged(direction) {
+        if (direction === "top" || direction === "bottom") {
+          this._dimension = "height";
+          this._delta = "dy";
+        }
+        else {
+          this._dimension = "width";
+          this._delta = "dx";
+        }
+
+        this._factor = direction === "right" || direction === "bottom" ? -1 : 1;
+      }
+
+      preventSelection(ev) {
+        ev.preventDefault();
+      }
+    }
+
+    customElements.define(OakSplitter.is, OakSplitter);
+  </script>
+</dom-module>
