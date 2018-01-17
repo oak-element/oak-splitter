@@ -27,14 +27,45 @@
       static get properties() {
         return {
           direction: { type: String, value: "top", observer: "_directionChanged" },
-          minSize: { type: Number, value: 10 }
+          minSize: { type: Number, value: 10 },
+          preventOverflow: { type: Boolean, value: false },
+          iframeSplit: { type: Boolean, value: false }
         }
       }
 
       ready() {
         super.ready();
+        if (this.iframeSplit) {
+          // This will prevent iframes from blocking mouseevents
+          this._captureArea = document.createElement("div");
+          Object.assign(this._captureArea.style, {
+            position: "fixed",
+            top: "0px",
+            left: "0px",
+            width: "100vw",
+            height: "100vh",
+            background: "transparent",
+            border: "0px",
+            content: ""
+          });
+
+          Polymer.Gestures.addListener(this, "down", e => this.beginTrack(e));
+          Polymer.Gestures.addListener(this, "up", e => this.endTrack(e));
+        }
+
         Polymer.Gestures.addListener(this, "track", e => this.track(e));
-        Polymer.Gestures.addListener(this, "down", e => this.preventSelection(e));
+      }
+
+      beginTrack(ev) {
+        this._captureArea.style.cursor = getComputedStyle(this).cursor;
+        document.body.appendChild(this._captureArea);
+      }
+
+      endTrack(ev) {
+        const parent = this._captureArea.parentNode;
+        if (parent) {
+          parent.removeChild(this._captureArea);
+        }
       }
 
       track(ev) {
@@ -43,16 +74,10 @@
             this._target = this.direction === "right" || this.direction === "bottom"
               ? this.nextElementSibling
               : this.previousElementSibling;
-
-
-            // Compute left size instead of real size to avoid overflow invisible move
-            const p = this._target.parentElement;
-            this._size = this._getDirectionalSize(p) - [...p.children]
-              .filter(c => c !== this._target)
-              .reduce((p, c) => p + this._getDirectionalSize(c), 0);
+            this._size = this._getDirectionalSize(this._target);
             break;
           case "track":
-            const delta = ev.detail[this._delta];
+            let delta = ev.detail[this._delta];
             let size = this._size + delta * this._factor;
             if (size < this.minSize) {
               size = this.minSize;
@@ -61,6 +86,16 @@
             this._target.style[this._dimension] = `${size}px`;
 
             this.dispatchEvent(new CustomEvent("resized", { [this._delta]: delta }));
+            break;
+          case "end":
+            // Compute left size instead of real size to avoid overflow invisible move
+            if (this.preventOverflow) {
+              const p = this._target.parentElement;
+              const size = this._getDirectionalSize(p) - [...p.children]
+                .filter(c => c !== this._target)
+                .reduce((p, c) => p + this._getDirectionalSize(c), 0);
+              this._target.style[this._dimension] = `${size}px`;
+            }
             break;
         }
         ev.preventDefault();
@@ -81,10 +116,6 @@
         }
 
         this._factor = direction === "right" || direction === "bottom" ? -1 : 1;
-      }
-
-      preventSelection(ev) {
-        ev.preventDefault();
       }
     }
 
